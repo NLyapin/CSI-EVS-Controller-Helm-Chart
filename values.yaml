@@ -1,0 +1,103 @@
+nameOverride: ""
+namespaceOverride: ""
+fullnameOverride: ""
+
+global:
+  imagePullSecrets:
+    - docker-registry
+
+secretName: csi-evs-controller
+
+controller:
+  serviceAccount: csi-evs-controller-sa
+  replicas: 1
+  nodeSelector:
+    kubernetes.io/os: linux
+  priorityClassName: system-cluster-critical
+  tolerations:
+    - key: "node-role.kubernetes.io/master"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+  imagePullSecrets:
+    - name: docker-registry
+  labels:
+    app: csi-evs-provisioner
+  csiAttacher:
+    image:
+      name: k8s.gcr.io/sig-storage/csi-attacher
+      tag: v3.3.0
+      imagePullPolicy: "IfNotPresent"
+  csiProvisioner:
+    image:
+      name: k8s.gcr.io/sig-storage/csi-provisioner
+      tag: v3.0.0
+      imagePullPolicy: "IfNotPresent"
+  csiSnapshotter:
+    image:
+      name: k8s.gcr.io/sig-storage/csi-snapshotter
+      tag: v4.2.1
+      imagePullPolicy: Always  #!!!
+  csiResizer:
+    image:
+      name: k8s.gcr.io/sig-storage/csi-resizer
+      tag: v1.3.0
+      imagePullPolicy: "IfNotPresent"
+  evsCsiProvisioner:
+    image:
+      name: swr.cn-north-4.myhuaweicloud.com/k8s-csi/evs-csi-plugin
+      tag: v0.1.11
+      imagePullPolicy: "IfNotPresent"
+  livenessProbe:
+    image:
+      name: k8s.gcr.io/sig-storage/livenessprobe
+      tag: v2.5.0
+      imagePullPolicy: "IfNotPresent"
+
+nodePlugin:
+  serviceAccount: csi-evs-node-sa
+  nodeSelector:
+    kubernetes.io/os: linux
+  tolerations:
+    - operator: Exists
+  priorityClassName: ""
+  labels:
+    app: csi-evs-plugin
+  evsDriverRegistrar:
+    image:
+      name: k8s.gcr.io/sig-storage/csi-node-driver-registrar
+      tag: v2.4.0
+      imagePullPolicy: "IfNotPresent"
+  evsCsiPlugin:
+    image:
+      name: swr.cn-north-4.myhuaweicloud.com/k8s-csi/evs-csi-plugin
+      tag: v0.1.11
+      imagePullPolicy: "IfNotPresent"
+  livenessProbe:
+    image:
+      name: k8s.gcr.io/sig-storage/livenessprobe
+      tag: v2.5.0
+      imagePullPolicy: "IfNotPresent"
+
+storageClass:
+  - name: evs
+    allowVolumeExpansion: true
+    parameters:
+      type: SAS
+      fsType: xfs
+    reclaimPolicy: Delete
+    volumeBindingMode: WaitForFirstConsumer
+  - name: evs-ssd
+    allowVolumeExpansion: true
+    parameters:
+      type: SSD
+      fsType: xfs
+    reclaimPolicy: Delete
+    volumeBindingMode: WaitForFirstConsumer
+
+CSIDriver:
+  attachRequired: true
+  podInfoOnMount: true
+  volumeLifecycleModes:
+    - "Persistent"
+    - "Ephemeral"

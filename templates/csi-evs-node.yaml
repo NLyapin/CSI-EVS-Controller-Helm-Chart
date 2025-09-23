@@ -1,0 +1,147 @@
+---
+{{- $nodePlugin := .Values.nodePlugin }}
+{{- $appLabels := fromYaml (include "app.labels" .) }}
+{{- $labels := merge $appLabels $nodePlugin.labels }}
+{{- $matchLabels := dict "app.kubernetes.io/name" (include "app.name" .) "app.kubernetes.io/instance" .Release.Name }}
+{{- $matchLabels = merge $matchLabels $nodePlugin.labels }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: csi-evs-plugin
+  labels:
+    {{- $labels | toYaml | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- $matchLabels | toYaml | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- $labels | toYaml | nindent 8 }}
+      annotations:
+        {{- include "app.annotations" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ .Values.nodePlugin.serviceAccount }}
+      {{ if .Values.nodePlugin.nodeSelector }}
+      nodeSelector:
+        {{- .Values.nodePlugin.nodeSelector | toYaml | nindent 8 }}
+      {{ end }}
+      {{ if .Values.nodePlugin.tolerations }}
+      tolerations:
+        {{- .Values.nodePlugin.tolerations | toYaml | nindent 8 }}
+      {{ end }}
+      containers:
+        - name: evs-driver-registrar
+          image: {{ .Values.nodePlugin.evsDriverRegistrar.image.name }}:{{ .Values.nodePlugin.evsDriverRegistrar.image.tag }}
+          imagePullPolicy: {{ .Values.nodePlugin.evsDriverRegistrar.image.imagePullPolicy }}
+          args:
+            - --v=5
+            - --csi-address=$(ADDRESS)
+            - --kubelet-registration-path=$(DRIVER_REG_SOCK_PATH)
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+            - name: DRIVER_REG_SOCK_PATH
+              value: /var/lib/kubelet/plugins/evs.csi.huaweicloud.com/csi.sock
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+            - name: registration-dir
+              mountPath: /registration
+        - name: liveness-probe
+          image: {{ .Values.nodePlugin.livenessProbe.image.name }}:{{ .Values.nodePlugin.livenessProbe.image.tag }}
+          imagePullPolicy: {{ .Values.nodePlugin.livenessProbe.image.imagePullPolicy }}
+          args:
+            - --csi-address=/csi/csi.sock
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+        - name: evs-csi-plugin
+          image: {{ .Values.nodePlugin.evsCsiPlugin.image.name }}:{{ .Values.nodePlugin.evsCsiPlugin.image.tag }}
+          imagePullPolicy: {{ .Values.nodePlugin.evsCsiPlugin.image.imagePullPolicy }}
+          args:
+            - /bin/evs-csi-plugin
+            - --v=5
+            - --endpoint=$(CSI_ENDPOINT)
+            - --cloud-config=$(CLOUD_CONFIG)
+          env:
+            - name: CSI_ENDPOINT
+              value: unix://csi/csi.sock
+            - name: CLOUD_CONFIG
+              value: /etc/evs/cloud-config
+          securityContext:
+            capabilities:
+              add:
+                - SYS_ADMIN
+              drop:
+                - all
+            privileged: true
+            readOnlyRootFilesystem: true
+          ports:
+            - containerPort: 9808
+              name: healthz
+              protocol: TCP
+          livenessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /healthz
+              port: healthz
+            initialDelaySeconds: 30
+            timeoutSeconds: 10
+            periodSeconds: 30
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+            - name: kubelet-dir
+              mountPath: /var/lib/kubelet
+              mountPropagation: Bidirectional
+            - name: pass-pods-mount-dir
+              mountPath: /mnt/paas/kubernetes/kubelet
+              mountPropagation: Bidirectional
+            - name: pods-probe-dir
+              mountPath: /dev
+              mountPropagation: HostToContainer
+            - name: host-sys
+              mountPath: /sys
+              readOnly: true
+            - name: host-run-udev
+              mountPath: /run/udev
+              readOnly: true
+            - name: evs-config
+              mountPath: /etc/evs/
+      volumes:
+        - name: socket-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins/evs.csi.huaweicloud.com
+            type: DirectoryOrCreate
+        - name: registration-dir
+          hostPath:
+            path: /var/lib/kubelet/plugins_registry/
+            type: Directory
+        - name: kubelet-dir
+          hostPath:
+            path: /var/lib/kubelet
+            type: Directory
+        - name: pass-pods-mount-dir
+          hostPath:
+            path: /mnt/paas/kubernetes/kubelet
+            type: DirectoryOrCreate
+        - name: pods-probe-dir
+          hostPath:
+            path: /dev
+            type: Directory
+        - name: host-sys
+          hostPath:
+            path: /sys
+            type: Directory
+        - name: host-run-udev
+          hostPath:
+            path: /run/udev
+            type: Directory
+        - name: evs-config
+          secret:
+            secretName: {{ .Values.secretName }}

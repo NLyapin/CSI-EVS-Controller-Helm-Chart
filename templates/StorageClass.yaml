@@ -1,0 +1,17 @@
+{{- range $index, $class := .Values.storageClass }}
+{{- if gt $index 0 }}
+---
+{{- end }}
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ $class.name }}
+provisioner: evs.csi.huaweicloud.com
+parameters:
+  {{- range $key, $value := $class.parameters }}
+  {{ $key }}: {{ $value }}
+  {{- end }}
+allowVolumeExpansion: {{ $class.allowVolumeExpansion }}
+reclaimPolicy: {{ $class.reclaimPolicy }}
+volumeBindingMode: {{ $class.volumeBindingMode }}
+{{- end }}

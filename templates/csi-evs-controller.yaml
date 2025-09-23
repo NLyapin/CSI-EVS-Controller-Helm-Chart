@@ -1,0 +1,159 @@
+---
+{{- $controller := .Values.controller }}
+{{- $appLabels := fromYaml (include "app.labels" .) }}
+{{- $labels := merge $appLabels $controller.labels }}
+{{- $matchLabels := dict "app.kubernetes.io/name" (include "app.name" .) "app.kubernetes.io/instance" .Release.Name }}
+{{- $matchLabels = merge $matchLabels $controller.labels }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "app.fullname" . }}
+  labels:
+    {{- $labels | toYaml | nindent 4 }}
+spec:
+  replicas: {{ .Values.controller.replicas }}
+  selector:
+    matchLabels:
+      {{- $matchLabels | toYaml | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- $labels | toYaml | nindent 8 }}
+      annotations:
+        {{- include "app.annotations" . | nindent 8 }}
+    spec:
+      serviceAccount: {{ .Values.controller.serviceAccount }}
+      {{ if .Values.controller.nodeSelector }}
+      nodeSelector:
+        {{- .Values.controller.nodeSelector | toYaml | nindent 8 }}
+      {{ end }}
+      priorityClassName: {{ .Values.controller.priorityClassName }}
+      {{ if .Values.controller.tolerations }}
+      tolerations:
+        {{- .Values.controller.tolerations | toYaml | nindent 8 }}
+      {{ end }}
+      {{- if .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- range $s := .Values.global.imagePullSecrets }}
+        {{- if kindIs "map" $s }}
+        - {{ $s | toYaml | nindent 10 | trim }}
+        {{- else }}
+        - name: {{ $s }}
+        {{- end }}
+        {{- end }}
+      {{- end }}
+
+      containers:
+        - name: csi-attacher
+          image: {{ .Values.controller.csiAttacher.image.name }}:{{ .Values.controller.csiAttacher.image.tag }}
+          imagePullPolicy: {{ .Values.controller.csiAttacher.image.imagePullPolicy }}
+          args:
+            - "--csi-address=$(ADDRESS)"
+            - "--timeout=3m"
+            - "--leader-election=true"
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+
+        - name: csi-provisioner
+          image: {{ .Values.controller.csiProvisioner.image.name }}:{{ .Values.controller.csiProvisioner.image.tag }}
+          imagePullPolicy: {{ .Values.controller.csiProvisioner.image.imagePullPolicy }}
+          args:
+            - "--csi-address=$(ADDRESS)"
+            - "--timeout=3m"
+            - "--default-fstype=ext4"
+            - "--feature-gates=Topology=true"
+            - "--extra-create-metadata"
+            - "--leader-election=true"
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+
+        - name: csi-resizer
+          image: {{ .Values.controller.csiResizer.image.name }}:{{ .Values.controller.csiResizer.image.tag }}
+          imagePullPolicy: {{ .Values.controller.csiResizer.image.imagePullPolicy }}
+          args:
+            - "--csi-address=$(ADDRESS)"
+            - "--timeout=3m"
+            - "--handle-volume-inuse-error=false"
+            - "--leader-election=true"
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+
+        - name: csi-snapshotter
+          image: {{ .Values.controller.csiSnapshotter.image.name }}:{{ .Values.controller.csiSnapshotter.image.tag }}
+          imagePullPolicy: {{ .Values.controller.csiSnapshotter.image.imagePullPolicy }}
+          args:
+            - "--csi-address=$(ADDRESS)"
+            - "--timeout=3m"
+            - "--extra-create-metadata"
+            - "--leader-election=true"
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+
+        - name: liveness-probe
+          image: {{ .Values.controller.livenessProbe.image.name }}:{{ .Values.controller.livenessProbe.image.tag }}
+          imagePullPolicy: {{ .Values.controller.livenessProbe.image.imagePullPolicy }}
+          args:
+            - "--csi-address=$(ADDRESS)"
+          env:
+            - name: ADDRESS
+              value: /csi/csi.sock
+          volumeMounts:
+            - mountPath: /csi
+              name: socket-dir
+
+        - name: evs-csi-provisioner
+          image: {{ .Values.controller.evsCsiProvisioner.image.name }}:{{ .Values.controller.evsCsiProvisioner.image.tag }}
+          imagePullPolicy: {{ .Values.controller.evsCsiProvisioner.image.imagePullPolicy }}
+          args:
+            - /bin/evs-csi-plugin
+            - "-v=5"
+            - "--endpoint=$(CSI_ENDPOINT)"
+            - "--cloud-config=$(CLOUD_CONFIG)"
+            - "--cluster=$(CLUSTER_NAME)"
+          env:
+            - name: CSI_ENDPOINT
+              value: unix://csi/csi.sock
+            - name: CLOUD_CONFIG
+              value: /etc/evs/cloud-config
+            - name: CLUSTER_NAME
+              value: kubernetes
+          ports:
+            - containerPort: 9808
+              name: healthz
+              protocol: TCP
+          livenessProbe:
+            failureThreshold: 5
+            httpGet:
+              path: /healthz
+              port: healthz
+            initialDelaySeconds: 30
+            timeoutSeconds: 10
+            periodSeconds: 30
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
+            - name: evs-config
+              mountPath: /etc/evs/
+
+      volumes:
+        - name: socket-dir
+          emptyDir: {}
+        - name: evs-config
+          secret:
+            secretName: {{ .Values.secretName }}
