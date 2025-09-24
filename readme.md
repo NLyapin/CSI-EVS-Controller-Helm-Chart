@@ -62,27 +62,58 @@ helm install csi-evs-controller ./charts/csi-evs-controller \
 
 | Параметр | Описание | По умолчанию |
 |----------|----------|--------------|
+| `nameOverride` | Переопределение имени чарта | `""` |
+| `namespaceOverride` | Переопределение namespace | `""` |
+| `fullnameOverride` | Полное переопределение имени | `""` |
+| `global.imagePullSecrets` | Секреты для pull образов | `[docker-registry]` |
 | `secretName` | Имя секрета с учетными данными SberCloud | `csi-evs-controller` |
+| **Controller параметры** | | |
+| `controller.serviceAccount` | Service Account для контроллера | `csi-evs-controller-sa` |
 | `controller.replicas` | Количество реплик контроллера | `1` |
 | `controller.nodeSelector` | Селектор узлов для контроллера | `kubernetes.io/os: linux` |
+| `controller.priorityClassName` | Класс приоритета для контроллера | `system-cluster-critical` |
+| `controller.tolerations` | Tolerations для контроллера | `[node-role.kubernetes.io/master: NoSchedule]` |
+| `controller.imagePullSecrets` | Секреты для pull образов контроллера | `[docker-registry]` |
+| `controller.labels` | Лейблы для контроллера | `app: csi-evs-provisioner` |
+| **Controller образы** | | |
+| `controller.csiAttacher.image.name` | CSI Attacher образ | `k8s.gcr.io/sig-storage/csi-attacher` |
+| `controller.csiAttacher.image.tag` | CSI Attacher тег | `v3.3.0` |
+| `controller.csiAttacher.image.imagePullPolicy` | CSI Attacher pull policy | `IfNotPresent` |
+| `controller.csiProvisioner.image.name` | CSI Provisioner образ | `k8s.gcr.io/sig-storage/csi-provisioner` |
+| `controller.csiProvisioner.image.tag` | CSI Provisioner тег | `v3.0.0` |
+| `controller.csiProvisioner.image.imagePullPolicy` | CSI Provisioner pull policy | `IfNotPresent` |
+| `controller.csiSnapshotter.image.name` | CSI Snapshotter образ | `k8s.gcr.io/sig-storage/csi-snapshotter` |
+| `controller.csiSnapshotter.image.tag` | CSI Snapshotter тег | `v4.2.1` |
+| `controller.csiSnapshotter.image.imagePullPolicy` | CSI Snapshotter pull policy | `Always` |
+| `controller.csiResizer.image.name` | CSI Resizer образ | `k8s.gcr.io/sig-storage/csi-resizer` |
+| `controller.csiResizer.image.tag` | CSI Resizer тег | `v1.3.0` |
+| `controller.csiResizer.image.imagePullPolicy` | CSI Resizer pull policy | `IfNotPresent` |
+| `controller.evsCsiProvisioner.image.name` | EVS CSI Provisioner образ | `swr.cn-north-4.myhuaweicloud.com/k8s-csi/evs-csi-plugin` |
+| `controller.evsCsiProvisioner.image.tag` | EVS CSI Provisioner тег | `v0.1.11` |
+| `controller.evsCsiProvisioner.image.imagePullPolicy` | EVS CSI Provisioner pull policy | `IfNotPresent` |
+| `controller.livenessProbe.image.name` | Liveness Probe образ | `k8s.gcr.io/sig-storage/livenessprobe` |
+| `controller.livenessProbe.image.tag` | Liveness Probe тег | `v2.5.0` |
+| `controller.livenessProbe.image.imagePullPolicy` | Liveness Probe pull policy | `IfNotPresent` |
+| **Node Plugin параметры** | | |
+| `nodePlugin.serviceAccount` | Service Account для node plugin | `csi-evs-node-sa` |
 | `nodePlugin.nodeSelector` | Селектор узлов для node plugin | `kubernetes.io/os: linux` |
-
-### Образы контейнеров
-
-Все образы полностью параметризованы и могут быть настроены в `values.yaml`:
-
-#### Controller компоненты
-- `controller.csiAttacher.image` - CSI Attacher
-- `controller.csiProvisioner.image` - CSI Provisioner  
-- `controller.csiResizer.image` - CSI Resizer
-- `controller.csiSnapshotter.image` - CSI Snapshotter
-- `controller.livenessProbe.image` - Liveness Probe
-- `controller.evsCsiProvisioner.image` - EVS CSI Provisioner
-
-#### Node Plugin компоненты
-- `nodePlugin.evsDriverRegistrar.image` - Driver Registrar
-- `nodePlugin.livenessProbe.image` - Liveness Probe
-- `nodePlugin.evsCsiPlugin.image` - EVS CSI Plugin
+| `nodePlugin.tolerations` | Tolerations для node plugin | `[operator: Exists]` |
+| `nodePlugin.priorityClassName` | Класс приоритета для node plugin | `""` |
+| `nodePlugin.labels` | Лейблы для node plugin | `app: csi-evs-plugin` |
+| **Node Plugin образы** | | |
+| `nodePlugin.evsDriverRegistrar.image.name` | Driver Registrar образ | `k8s.gcr.io/sig-storage/csi-node-driver-registrar` |
+| `nodePlugin.evsDriverRegistrar.image.tag` | Driver Registrar тег | `v2.4.0` |
+| `nodePlugin.evsDriverRegistrar.image.imagePullPolicy` | Driver Registrar pull policy | `IfNotPresent` |
+| `nodePlugin.evsCsiPlugin.image.name` | EVS CSI Plugin образ | `swr.cn-north-4.myhuaweicloud.com/k8s-csi/evs-csi-plugin` |
+| `nodePlugin.evsCsiPlugin.image.tag` | EVS CSI Plugin тег | `v0.1.11` |
+| `nodePlugin.evsCsiPlugin.image.imagePullPolicy` | EVS CSI Plugin pull policy | `IfNotPresent` |
+| `nodePlugin.livenessProbe.image.name` | Liveness Probe образ | `k8s.gcr.io/sig-storage/livenessprobe` |
+| `nodePlugin.livenessProbe.image.tag` | Liveness Probe тег | `v2.5.0` |
+| `nodePlugin.livenessProbe.image.imagePullPolicy` | Liveness Probe pull policy | `IfNotPresent` |
+| **CSIDriver параметры** | | |
+| `CSIDriver.attachRequired` | Требуется ли attach для драйвера | `true` |
+| `CSIDriver.podInfoOnMount` | Передавать информацию о поде при mount | `true` |
+| `CSIDriver.volumeLifecycleModes` | Режимы жизненного цикла томов | `[Persistent, Ephemeral]` |
 
 ### StorageClass
 
@@ -244,6 +275,3 @@ kubectl delete storageclass evs evs-ssd
 - **CSI Driver**: evs.csi.huaweicloud.com
 - **EVS Plugin**: v0.1.11
 
-## Лицензия
-
-Этот чарт предназначен для использования в SberCloud и соответствует корпоративным стандартам безопасности.
